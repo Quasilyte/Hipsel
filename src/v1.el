@@ -32,11 +32,16 @@
 (defun hel--intern (pkg sym)
   (intern (format "__%s:%s" pkg sym)))
 
-(defun hel--sym-pkg (sym)
+(defun hel--priv-sym-pkg (priv-sym)
   ;; #PERFOMANCE: this function can be optimized
-  (let* ((sym-name (symbol-name sym))
+  (let* ((sym-name (symbol-name priv-sym))
          (pkg-name (substring sym-name 2 (string-match ":" sym-name))))
     (intern pkg-name)))
+
+(defun hel--priv-sym-pub-name (priv-sym)
+  ;; #PERFOMANCE: this function can be optimized
+  (let ((sym-name (symbol-name priv-sym)))
+    (substring sym-name (1+ (string-match ":" sym-name)))))
 
 ;; {{ PACKAGE-RELATED }}
 
@@ -63,7 +68,7 @@
       (setq priv-sym (gethash sym hel-OPENED-SYMBOLS))
       (error-unless priv-sym
         "Symbol `%s' not found in opened package" sym)
-      (setq sym-pkg (hel--sym-pkg priv-sym))
+      (setq sym-pkg (hel--priv-sym-pkg priv-sym))
       (error-unless (eq hel-OPENED-PKG sym-pkg)
         "Symbol `%s' belongs to package `%s' and can not be re-exported"
         sym sym-pkg)
@@ -72,22 +77,28 @@
     (puthash hel-OPENED-PKG pkg-symbols hel-PKG-MAP))
   nil)
 
-(defun hel--import-sym! (pkg prefix sym)
-  (message "import `%s'.`%s'" pkg sym)
-  (puthash (intern (concat prefix (symbol-name sym)))
-           (hel--intern pkg sym)
-           hel-OPENED-SYMBOLS))
+(defun hel--import-sym! (sym priv-sym)
+  (puthash sym priv-sym hel-OPENED-SYMBOLS))
+
+(defun hel--import-priv-sym! (prefix priv-sym)
+  (hel--import-sym! (intern (concat prefix (hel--priv-sym-pub-name priv-sym)))
+                    priv-sym))
+
+(defun hel--import-pub-sym! (prefix sym priv-sym)
+  (hel--import-sym! (intern (concat prefix (symbol-name sym)))
+                    priv-sym))
 
 (defun hel--pkg-import-all! (src-pkg prefix src-symbols)
-  (dovector (sym src-symbols)
-    (hel--import-sym! src-pkg prefix sym)))
+  (dovector (priv-sym src-symbols)
+    (hel--import-priv-sym! prefix priv-sym)))
 
 (defun hel--pkg-import-list! (src-pkg prefix src-symbols import-symbols)
   (dolist (sym import-symbols)
-    (error-unless (vec:contains? src-symbols (hel--intern src-pkg sym))
-      "Symbol `%s' is not exported by package `%s'"
-      sym src-pkg)
-    (hel--import-sym! src-pkg prefix sym)))
+    (let ((priv-sym (hel--intern src-pkg sym)))
+      (error-unless (vec:contains? src-symbols priv-sym)
+        "Symbol `%s' is not exported by package `%s'"
+        sym src-pkg)
+      (hel--import-pub-sym! prefix sym priv-sym))))
 
 (defmacro hel-pkg-import! (src-pkg prefix &rest import-symbols)
   (let ((src-symbols (gethash src-pkg hel-PKG-MAP)))
@@ -122,16 +133,16 @@
   (hel-pkg-defun! add1 (x) (+ 1 x))
   (hel-pkg-defun! add2 (x) (call add1 (call add1 x)))
   (hel-pkg-defmacro! macros (x) (list 'quote (cons (cdr x) (car x))))
-  (hel-pkg-export! add2)
+  (hel-pkg-export! add1 add2)
   (hel-pkg-close!)
 
-  (call add2 1)
+  (call add1 1)
   
   ;; defined `mod-a.add1'
 
   (hel-pkg-open! mod-b)
   (hel-pkg-import! mod-a "" add1)
-  (call add2 1)
+  
   (message "%s" (add1 1))
-  (hel-pkg-export! add2)
+  (hel-pkg-export! add1)
   (hel-pkg-close!))
