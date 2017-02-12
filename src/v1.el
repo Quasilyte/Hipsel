@@ -1,5 +1,14 @@
 (require 'dash)
 
+;; {{ NOTES }}
+
+;; Packages are currently `closed'. User can not extend them.
+;; It is also kinda tricky to write multi-file packages.
+
+;; Markers used in this project:
+;;   #PERFOMANCE marks code that may be a subject to optimizations
+;;   #FIXME marks something that should be fixed (bad code)
+
 ;; {{ UTILS }}
 
 (defalias 'set! 'setq)
@@ -9,78 +18,91 @@
   `(unless ,cond-expr
      (error ,fmt-str ,@fmt-args)))
 
-;; {{ TYPES }}
-
-;; Ref is symbol reference that has additional link to its source package
-(defun hel-ref (pkg sym) (vector pkg sym))
-(defun hel-ref-pkg (ref) (aref ref 0))
-(defun hel-ref-sym (ref) (aref ref 1))
-
 ;; {{ GLOBAL STATE }}
 
-(defconst hel-pkg nil)
-(defconst hel-pkg-symbols (make-hash-table :test #'eq))
-(defconst hel-pkg-map (make-hash-table :test #'eq))
+(defconst hel-OPENED-PKG nil
+  "Current package symbol")
+(defconst hel-OPENED-SYMBOLS (make-hash-table :test #'eq)
+  "Symbols visible to current package. Maps local symbols to private symbols")
+(defconst hel-PKG-MAP (make-hash-table :test #'eq)
+  "Global package index. Maps package name to exported private symbols vector")
 
 ;; {{ CORE DEFS }}
 
-(defun hel-intern (module sym)
-  (intern (format "<%s.%s>" module sym)))
+(defun hel--intern (pkg sym)
+  (intern (format "__%s:%s" pkg sym)))
+
+(defun hel--sym-pkg (sym)
+  ;; #PERFOMANCE: this function can be optimized
+  (let* ((sym-name (symbol-name sym))
+         (pkg-name (substring sym-name 2 (string-match ":" sym-name))))
+    (intern pkg-name)))
 
 ;; {{ PACKAGE-RELATED }}
 
 (defmacro hel-pkg-open! (pkg)
-  (when hel-pkg
-    (error "Already has opened package `%s'. Close it" hel-pkg))
-  (set! hel-pkg pkg)
+  (when hel-OPENED-PKG
+    (error "Already has opened package `%s'. Close it" hel-OPENED-PKG))
+  (set! hel-OPENED-PKG pkg)
   nil)
 
 (defun hel-pkg-close! ()
-  (unless hel-pkg
+  (unless hel-OPENED-PKG
     (error "No package is opened to be closed"))
-  (set! hel-pkg nil)
-  (clrhash hel-pkg-symbols))
+  (set! hel-OPENED-PKG nil)
+  (clrhash hel-OPENED-SYMBOLS))
 
-(defmacro hel-pkg-provide! (&rest symbols)
-  (error-unless symbols "Can not provide a package without any symbols")
-  (dolist (sym symbols)
-    (error-unless (hel--pkg-contains? hel-pkg sym)
-      "Symbol `%s' does not belong to opened package" sym))
-  (puthash hel-pkg symbols hel-pkg-map)
+(defmacro hel-pkg-export! (&rest symbols)
+  (error-unless symbols
+    "Can not export a package without any symbols")
+  (let ((pkg-symbols (make-vector (length symbols) nil))
+        (priv-sym nil)
+        (sym-pkg "")
+        (i 0))
+    (dolist (sym symbols)
+      (setq priv-sym (gethash sym hel-OPENED-SYMBOLS))
+      (error-unless priv-sym
+        "Symbol `%s' not found in opened package" sym)
+      (setq sym-pkg (hel--sym-pkg priv-sym))
+      (error-unless (eq hel-OPENED-PKG sym-pkg)
+        "Symbol `%s' belongs to package `%s' and can not be re-exported"
+        sym sym-pkg)
+      (aset pkg-symbols i (hel--intern hel-OPENED-PKG sym))
+      (setq i (1+ i))) 
+    (puthash hel-OPENED-PKG pkg-symbols hel-PKG-MAP))
   nil)
 
-(defun hel--pkg-put-sym! (src-pkg prefix sym)
+(defun hel--import-sym! (pkg prefix sym)
+  (message "import `%s'.`%s'" pkg sym)
   (puthash (intern (concat prefix (symbol-name sym)))
-           (hel-intern src-pkg sym)
-           hel-pkg-symbols))
+           (hel--intern pkg sym)
+           hel-OPENED-SYMBOLS))
 
-(defun hel--pkg-contains? (pkg sym)
-  (fboundp (hel-intern pkg sym)))
+(defun hel--pkg-import-all! (src-pkg prefix src-symbols)
+  (dovector (sym src-symbols)
+    (hel--import-sym! src-pkg prefix sym)))
 
-(defmacro hel-pkg-require! (src-pkg prefix &rest symbols)
-  (let ((src-pkg-symbols (gethash src-pkg hel-pkg-map)))
-    (unless src-pkg-symbols
-      (error "Package `%s' not found" src-pkg))
-    (if symbols
-        ;; Get only listed symbols
-        (dolist (sym symbols)
-          (unless (memq sym src-pkg-symbols)
-            (error (if (hel--pkg-contains? src-pkg sym)
-                       "Symbol `%s' is private inside package `%s'"
-                     "Symbol `%s' not found inside package `%s'")
-                   sym
-                   src-pkg))
-          (hel--pkg-put-sym! src-pkg prefix sym))
-      ;; Get all package public symbols
-      (dolist (sym symbols) (hel--pkg-put-sym! src-pkg prefix sym))))
-  nil)
+(defun hel--pkg-import-list! (src-pkg prefix src-symbols import-symbols)
+  (dolist (sym import-symbols)
+    (error-unless (vec:contains? src-symbols (hel--intern src-pkg sym))
+      "Symbol `%s' is not exported by package `%s'"
+      sym src-pkg)
+    (hel--import-sym! src-pkg prefix sym)))
 
+(defmacro hel-pkg-import! (src-pkg prefix &rest import-symbols)
+  (let ((src-symbols (gethash src-pkg hel-PKG-MAP)))
+    (error-unless src-symbols
+      "Package `%s' not found" src-pkg)
+    (if import-symbols
+        (hel--pkg-import-list! src-pkg prefix src-symbols import-symbols)
+      (hel--pkg-import-all! src-pkg prefix src-symbols))))
+    
 (defun hel--pkg-define! (def sym params forms)
-  (error-unless hel-pkg
+  (error-unless hel-OPENED-PKG
     "No package is opened, can not define symbol `%s'" sym)
-  (let ((priv-name (hel-intern hel-pkg sym)))
-    (puthash sym priv-name hel-pkg-symbols)
-    `(,def ,priv-name ,params ,@forms)))
+  (let ((priv-sym (hel--intern hel-OPENED-PKG sym)))
+    (puthash sym priv-sym hel-OPENED-SYMBOLS)
+    `(,def ,priv-sym ,params ,@forms)))
 
 (defmacro hel-pkg-defun! (sym params &rest forms)
   (hel--pkg-define! 'defun sym params forms))
@@ -91,7 +113,7 @@
 ;; {{ SANDBOX }}
 
 (defmacro call (f &rest args)
-  (cons (gethash f hel-pkg-symbols f) args))
+  (cons (gethash f hel-OPENED-SYMBOLS f) args))
 
 (defmacro quote-all (&rest forms) (declare (indent defun)))
 
@@ -100,13 +122,16 @@
   (hel-pkg-defun! add1 (x) (+ 1 x))
   (hel-pkg-defun! add2 (x) (call add1 (call add1 x)))
   (hel-pkg-defmacro! macros (x) (list 'quote (cons (cdr x) (car x))))
-  (hel-pkg-provide! add2)
+  (hel-pkg-export! add2)
   (hel-pkg-close!)
+
+  (call add2 1)
   
   ;; defined `mod-a.add1'
 
   (hel-pkg-open! mod-b)
-  (hel-pkg-require! mod-a "" add2)
+  (hel-pkg-import! mod-a "" add1)
   (call add2 1)
   (message "%s" (add1 1))
+  (hel-pkg-export! add2)
   (hel-pkg-close!))
