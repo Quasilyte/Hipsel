@@ -12,33 +12,11 @@
 ;; {{ UTILS }}
 
 (defalias 'set! 'setq)
-  
+
 (defmacro error-unless (cond-expr fmt-str &rest fmt-args)
   (declare (indent defun))
   `(unless ,cond-expr
      (error ,fmt-str ,@fmt-args)))
-
-(defmacro case (cmp expr &rest forms)
-  (declare (indent defun))
-  (let ((unprocessed (length forms))
-        (val (make-symbol "val"))
-        arms
-        cond-val
-        cond-result
-        default-arm)
-    (while (> unprocessed 1)
-      (set! cond-val `(quote (nth 0 forms))
-            cond-result (nth 1 forms)
-            arms (cons `((,cmp ,cond-val ,val) ,cond-result) arms)
-            forms (nthcdr 2 forms)
-            unprocessed (- unprocessed 2)))
-    (set! default-arm
-          (if forms
-              (list t (car forms))
-            (list t `(error "Uncovered case executed: %s" ,val))))
-    (set! arms (nreverse arms))
-    `(let ((,val ,expr))
-       (cond ,@arms ,default-arm))))
 
 ;; {{ GLOBAL STATE }}
 
@@ -49,6 +27,7 @@
 (defconst hel-PKG-MAP (make-hash-table :test #'eq)
   "Global package index. Maps package name to exported private symbols vector")
 (defconst hel-ALIASES
+  ;; #PERFOMANCE: there are more primitive functions to be added in this list
   (let (hel-sym
         elisp-sym
         (alias-table (make-hash-table :test #'eq))
@@ -202,6 +181,8 @@ but alias is looked up dynamically.")
     form))
 
 ;; {{ SANDBOX }}
+
+
 
 (defmacro EVAL (form)
   (hel-form form))
