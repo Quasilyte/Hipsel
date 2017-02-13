@@ -18,6 +18,28 @@
   `(unless ,cond-expr
      (error ,fmt-str ,@fmt-args)))
 
+(defmacro case (cmp expr &rest forms)
+  (declare (indent defun))
+  (let ((unprocessed (length forms))
+        (val (make-symbol "val"))
+        arms
+        cond-val
+        cond-result
+        default-arm)
+    (while (> unprocessed 1)
+      (set! cond-val `(quote (nth 0 forms))
+            cond-result (nth 1 forms)
+            arms (cons `((,cmp ,cond-val ,val) ,cond-result) arms)
+            forms (nthcdr 2 forms)
+            unprocessed (- unprocessed 2)))
+    (set! default-arm
+          (if forms
+              (list t (car forms))
+            (list t `(error "Uncovered case executed: %s" ,val))))
+    (set! arms (nreverse arms))
+    `(let ((,val ,expr))
+       (cond ,@arms ,default-arm))))
+
 ;; {{ GLOBAL STATE }}
 
 (defconst hel-OPENED-PKG nil
@@ -26,16 +48,35 @@
   "Symbols visible to current package. Maps local symbols to private symbols")
 (defconst hel-PKG-MAP (make-hash-table :test #'eq)
   "Global package index. Maps package name to exported private symbols vector")
+(defconst hel-ALIASES
+  (let (hel-sym
+        elisp-sym
+        (alias-table (make-hash-table :test #'eq))
+        (sym-pairs '((pair cons)
+                     (head car)
+                     (tail cdr))))
+    (dolist (sym-pair sym-pairs)
+      (setq hel-sym (nth 0 sym-pair))
+      (setq elisp-sym (nth 1 sym-pair))
+      (puthash hel-sym elisp-sym alias-table))
+    alias-table)
+  "Symbols that have 1-1 mapping with Emacs Lisp.
+We need those mostly due perfomance reasons: `defalias'
+causes slowdown even in byte-compiled code.
+If we use `disassemble', `car' compiles to `car',
+but alias is looked up dynamically.")
 
 ;; {{ CORE DEFS }}
 
 (defun hel--intern (pkg sym)
-  (intern (format "__%s:%s" pkg sym)))
+  (intern (format "_hel-%s:%s" pkg sym)))
 
 (defun hel--priv-sym-pkg (priv-sym)
   ;; #PERFOMANCE: this function can be optimized
   (let* ((sym-name (symbol-name priv-sym))
-         (pkg-name (substring sym-name 2 (string-match ":" sym-name))))
+         (pkg-name (substring sym-name
+                              (length "_hel-")
+                              (string-match ":" sym-name))))
     (intern pkg-name)))
 
 (defun hel--priv-sym-pub-name (priv-sym)
@@ -55,7 +96,8 @@
   (unless hel-OPENED-PKG
     (error "No package is opened to be closed"))
   (set! hel-OPENED-PKG nil)
-  (clrhash hel-OPENED-SYMBOLS))
+  (clrhash hel-OPENED-SYMBOLS)
+  nil)
 
 (defmacro hel-pkg-export! (&rest symbols)
   (error-unless symbols
@@ -116,12 +158,53 @@
     `(,def ,priv-sym ,params ,@forms)))
 
 (defmacro hel-pkg-defun! (sym params &rest forms)
+  (declare (indent defun))
   (hel--pkg-define! 'defun sym params forms))
 
 (defmacro hel-pkg-defmacro! (sym params &rest forms)
+  (declare (indent defun))
   (hel--pkg-define! 'defmacro sym params forms))
 
+;; {{ EVAL-RELATED }}
+
+;; - eval interactive like `eval-last-sexp', `eval-region', etc
+;; - byte compile file for efficient importing as library
+;; - dynamic `load'
+;; - macro expansions
+
+(defun hel-form (form)
+  (cond
+   ((listp form) (hel-form:list form))
+   (t form)))
+
+(defun hel-form:list (list)
+  (let* ((head (car list))
+         (tail (cdr list))
+         (alias (gethash head hel-ALIASES)))
+    (if alias
+        (cons alias (-map #'hel-form tail))
+      (cond ((eq 'quote head) (hel-form:quoted (car tail)))
+            ((eq 'package head) (cons 'hel-pkg-open! tail))
+            ((eq 'export head) (cons 'hel-pkg-export! tail))
+            ((eq 'import head) (cons 'hel-pkg-import! tail))
+            ((symbolp head) (hel-form:call head tail))
+            (t (error "Unexpected head of unquoted list"))))))
+
+(defun hel-form:call (fn args)
+  (let ((fn (gethash fn hel-OPENED-SYMBOLS fn)))    
+    (if (macrop fn)
+        (hel-form (macroexpand (cons fn args)))
+      (cons fn (-map #'hel-form args)))))
+
+(defun hel-form:quoted (form)
+  (if (vectorp form)
+      (error "no infix forms yet")
+    form))
+
 ;; {{ SANDBOX }}
+
+(defmacro EVAL (form)
+  (hel-form form))
 
 (defmacro call (f &rest args)
   (cons (gethash f hel-OPENED-SYMBOLS f) args))
@@ -133,6 +216,13 @@
   (hel-pkg-defun! add1 (x) (+ 1 x))
   (hel-pkg-defun! add2 (x) (call add1 (call add1 x)))
   (hel-pkg-defmacro! macros (x) (list 'quote (cons (cdr x) (car x))))
+
+  (hel-pkg-defmacro! fncallx (f suffix &rest args)
+    (let ((name (intern (format "%s%s" f suffix))))
+      `(,name ,@args)))
+  (hel-pkg-defmacro! macro-add1 (x)
+    `(add1 ,x))
+  
   (hel-pkg-export! add1 add2)
   (hel-pkg-close!)
 
