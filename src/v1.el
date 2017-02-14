@@ -1,4 +1,4 @@
-(require 'dash)
+(require 'dash) 
 
 ;; {{ BUGS }}
 
@@ -99,7 +99,7 @@
                      (max-of max) 
                      (min-of min)
                      (catch catch)
-                     (throw throw))
+                     (throw throw))))
     (dolist (sym-pair sym-pairs)
       (setq hel-sym (nth 0 sym-pair))
       (setq elisp-sym (nth 1 sym-pair))
