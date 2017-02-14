@@ -1,8 +1,12 @@
+;;; -*- lexical-binding: t -*-
+
 (require 'dash) 
 
 ;; {{ BUGS }}
 
 ;; - Need to check if package is opened in every expr
+;; - Def/* forms should not return mangled symbol
+;; - `set!' and some other forms must be forbidden at top level
 
 ;; {{ NOTES }}
 
@@ -36,7 +40,7 @@
   "Symbols visible to current package. Maps local symbols to private symbols")
 (defvar-local hel-PKG-MAP (make-hash-table :test #'eq)
   "Global package index. Maps package name to exported private symbols vector")
-(defvar-local hel-ALIASES
+(defconst hel-ALIASES
   ;; #PERFOMANCE: there are more primitive functions to be added in this list
   ;; Missing: (`memq' `symbol-value' `symbol-function'
   ;;           `set' `setf' `get' point goto-char insert
@@ -62,8 +66,7 @@
   (let (hel-sym   
         elisp-sym
         (alias-table (make-hash-table :test #'eq))
-        (sym-pairs '((set! setq)
-                     (array.set! aset)
+        (sym-pairs '((array.set! aset)
                      (array.nth aref)
                      (array.slice substring)
                      (seq.len length)
@@ -188,8 +191,16 @@ but alias is looked up dynamically.")
     (if import-symbols
         (hel--pkg-import-list! src-pkg prefix src-symbols import-symbols)
       (hel--pkg-import-all! src-pkg prefix src-symbols))))
-    
-(defun hel--pkg-define! (def sym params forms)
+
+(defun hel--pkg-def! (sym def-form)
+  (declare (indent defun))
+  (error-unless hel-OPENED-PKG
+    "No package is opened, can not define symbol `%s'" sym)
+  (let ((priv-sym (hel--intern hel-OPENED-PKG sym)))
+    (puthash sym priv-sym hel-OPENED-SYMBOLS)
+    (funcall def-form priv-sym)))
+
+(defun hel--pkg-def/callable! (def sym params forms)
   (error-unless hel-OPENED-PKG
     "No package is opened, can not define symbol `%s'" sym)
   (let ((priv-sym (hel--intern hel-OPENED-PKG sym)))
@@ -197,12 +208,16 @@ but alias is looked up dynamically.")
     `(,def ,priv-sym ,params ,@(-map #'hel-form forms))))
 
 (defmacro hel-pkg-defun! (sym params &rest forms)
-  (declare (indent defun))
-  (hel--pkg-define! 'defun sym params forms))
+  (hel--pkg-def! sym 
+    (lambda (priv-sym) `(defun ,priv-sym ,params ,@(-map #'hel-form forms)))))
 
 (defmacro hel-pkg-defmacro! (sym params &rest forms)
-  (declare (indent defun))
-  (hel--pkg-define! 'defmacro sym params forms))
+  (hel--pkg-def! sym
+    (lambda (priv-sym) `(defmacro ,priv-sym ,params ,@(-map #'hel-form forms)))))
+
+(defmacro hel-pkg-defvar! (sym val)
+  (hel--pkg-def! sym
+    (lambda (priv-sym) `(defvar ,priv-sym ,val))))
 
 ;; {{ EVAL-RELATED }}
 
@@ -224,18 +239,30 @@ but alias is looked up dynamically.")
         (cons alias (-map #'hel-form tail))
       (cond ((eq 'elisp head) (hel-form:elisp tail))
             ((eq 'quote head) (hel-form:quoted (car tail)))
+            ((eq 'dynamic head) (hel-form:dynamic (car tail)))
             ((eq 'package head) (cons 'hel-pkg-open! tail))
             ((eq 'export head) (cons 'hel-pkg-export! tail))
             ((eq 'import head) (cons 'hel-pkg-import! tail))
             ((eq 'def/fn head) (hel-form:def/callable 'hel-pkg-defun! tail))
             ((eq 'def/macro head) (hel-form:def/callable 'hel-pkg-defmacro! tail))
-            ((eq 'def/var head) (hel-form:def/val 'defvar tail))
-            ((eq 'def-local/var head) (hel-form:def/val 'defvar-local tail))
+            ((eq 'def/dynamic-var head) (hel-form:def/val 'hel-pkg-defvar! tail))
+            ((eq 'set! head) (hel-form:set! tail))
             ((symbolp head) (hel-form:call head tail))
             (t (error "Unexpected head of unquoted list"))))))
 
 (defun hel-form:elisp (forms)
   `(progn ,@forms))
+
+(defun hel-form:dynamic (var)
+  (let ((sym (gethash var hel-OPENED-SYMBOLS)))
+    (error-unless sym
+      "Dynamic symbol `%s' is not defined" var)
+    sym))
+
+(defun hel-form:set! (forms)
+  (let ((place (nth 0 forms))
+        (val (nth 1 forms)))
+    `(setq ,(hel-form place) ,(hel-form val))))
 
 (defun hel-form:def/callable (def forms)
   (let* ((signature (car forms))
@@ -245,9 +272,9 @@ but alias is looked up dynamically.")
     `(,def ,sym ,params ,@forms)))
 
 (defun hel-form:def/val (def forms)
-  (let ((sym (hel--intern hel-OPENED-PKG (nth 0 forms)))
+  (let ((sym (nth 0 forms))
         (val (nth 1 forms)))
-    `(,def ,sym ,(hel-form val) nil)))
+    `(,def ,sym ,(hel-form val))))
 
 (defun hel-form:call (fn args)
   (let ((sym (gethash fn hel-OPENED-SYMBOLS)))
