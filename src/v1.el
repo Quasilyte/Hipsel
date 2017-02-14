@@ -1,5 +1,9 @@
 (require 'dash)
 
+;; {{ BUGS }}
+
+;; - Need to check if package is opened in every expr
+
 ;; {{ NOTES }}
 
 ;; Packages are currently `closed'. User can not extend them.
@@ -18,22 +22,84 @@
   `(unless ,cond-expr
      (error ,fmt-str ,@fmt-args)))
 
+(defmacro error-when (cond-expr fmt-str &rest fmt-args)
+  (declare (indent defun))
+  `(when ,cond-expr
+     (error ,fmt-str ,@fmt-args)))
+
 ;; {{ GLOBAL STATE }}
 
-(defconst hel-OPENED-PKG nil
+;; All varibales below should be buffer-local
+(defvar-local hel-OPENED-PKG nil
   "Current package symbol")
-(defconst hel-OPENED-SYMBOLS (make-hash-table :test #'eq)
+(defvar-local hel-OPENED-SYMBOLS (make-hash-table :test #'eq)
   "Symbols visible to current package. Maps local symbols to private symbols")
-(defconst hel-PKG-MAP (make-hash-table :test #'eq)
+(defvar-local hel-PKG-MAP (make-hash-table :test #'eq)
   "Global package index. Maps package name to exported private symbols vector")
-(defconst hel-ALIASES
+(defvar-local hel-ALIASES
   ;; #PERFOMANCE: there are more primitive functions to be added in this list
-  (let (hel-sym
+  ;; Missing: (`memq' `symbol-value' `symbol-function'
+  ;;           `set' `setf' `get' point goto-char insert
+  ;;           point-max point-min
+  ;;           char-after following-char preceding-char
+  ;;           current-column indent-to
+  ;;           eolp eobp bolp bobp
+  ;;           current-buffer set-buffer save-current-buffer
+  ;;           interactive-p
+  ;;           forward-char forward-word
+  ;;           skip-chars-forward skip-chars-backward
+  ;;           forward-line char-syntax
+  ;;           buffer-substring delete-region
+  ;;           narrow-to-region widen
+  ;;           end-of-line save-execursion
+  ;;           save-window-excursion
+  ;;           save-restriction
+  ;;           `unwind-protect' `condition-case'
+  ;;           temp-output-buffer-setup temp-output-buffer-show
+  ;;           `string-equal' `member' `assq'
+  ;;           `nreverse' `setcar' `setcdr'
+  ;;           `car-safe' `cdr-safe' `nconc')
+  (let (hel-sym   
         elisp-sym
         (alias-table (make-hash-table :test #'eq))
-        (sym-pairs '((pair cons)
-                     (head car)
-                     (tail cdr))))
+        (sym-pairs '((set! setq)
+                     (array.set! aset)
+                     (array.nth aref)
+                     (list.nth nth)
+                     (seq.nth elt) 
+                     (sym? symbolp)
+                     (pair? consp)
+                     (str? stringp)
+                     (list? listp)
+                     (num? numberp)
+                     (int? integerp)
+                     (eq? eq)
+                     (equal? equal)
+                     (not not)
+                     (list.head car)
+                     (list.tail cdr)
+                     (list.drop nthcdr)
+                     (pair cons)
+                     (list list)
+                     (seq.len length)
+                     (array.slice substring)
+                     (seq.concat concat)
+                     (inc 1+)
+                     (dec 1-)
+                     (- -)
+                     (+ +)
+                     (* *)
+                     (/ /)
+                     (% %)
+                     (> >)
+                     (< <)
+                     (>= >=)
+                     (<= <=)
+                     (= =)
+                     (max-of max) 
+                     (min-of min)
+                     (catch catch)
+                     (throw throw))
     (dolist (sym-pair sym-pairs)
       (setq hel-sym (nth 0 sym-pair))
       (setq elisp-sym (nth 1 sym-pair))
@@ -66,16 +132,10 @@ but alias is looked up dynamically.")
 ;; {{ PACKAGE-RELATED }}
 
 (defmacro hel-pkg-open! (pkg)
-  (when hel-OPENED-PKG
-    (error "Already has opened package `%s'. Close it" hel-OPENED-PKG))
-  (set! hel-OPENED-PKG pkg)
-  nil)
-
-(defun hel-pkg-close! ()
-  (unless hel-OPENED-PKG
-    (error "No package is opened to be closed"))
-  (set! hel-OPENED-PKG nil)
-  (clrhash hel-OPENED-SYMBOLS)
+  (error-when (eq hel-OPENED-PKG pkg)
+    "Package `%s' is already opened" pkg)
+  (set! hel-OPENED-PKG pkg
+        hel-OPENED-SYMBOLS (make-hash-table :test #'eq))
   nil)
 
 (defmacro hel-pkg-export! (&rest symbols)
@@ -134,7 +194,7 @@ but alias is looked up dynamically.")
     "No package is opened, can not define symbol `%s'" sym)
   (let ((priv-sym (hel--intern hel-OPENED-PKG sym)))
     (puthash sym priv-sym hel-OPENED-SYMBOLS)
-    `(,def ,priv-sym ,params ,@forms)))
+    `(,def ,priv-sym ,params ,@(-map #'hel-form forms))))
 
 (defmacro hel-pkg-defun! (sym params &rest forms)
   (declare (indent defun))
@@ -162,18 +222,40 @@ but alias is looked up dynamically.")
          (alias (gethash head hel-ALIASES)))
     (if alias
         (cons alias (-map #'hel-form tail))
-      (cond ((eq 'quote head) (hel-form:quoted (car tail)))
+      (cond ((eq 'elisp head) (hel-form:elisp tail))
+            ((eq 'quote head) (hel-form:quoted (car tail)))
             ((eq 'package head) (cons 'hel-pkg-open! tail))
             ((eq 'export head) (cons 'hel-pkg-export! tail))
             ((eq 'import head) (cons 'hel-pkg-import! tail))
+            ((eq 'def/fn head) (hel-form:def/callable 'hel-pkg-defun! tail))
+            ((eq 'def/macro head) (hel-form:def/callable 'hel-pkg-defmacro! tail))
+            ((eq 'def/var head) (hel-form:def/val 'defvar tail))
+            ((eq 'def-local/var head) (hel-form:def/val 'defvar-local tail))
             ((symbolp head) (hel-form:call head tail))
             (t (error "Unexpected head of unquoted list"))))))
 
+(defun hel-form:elisp (forms)
+  `(progn ,@forms))
+
+(defun hel-form:def/callable (def forms)
+  (let* ((signature (car forms))
+         (sym (car signature))
+         (params (cdr signature))
+         (forms (cdr forms)))
+    `(,def ,sym ,params ,@forms)))
+
+(defun hel-form:def/val (def forms)
+  (let ((sym (hel--intern hel-OPENED-PKG (nth 0 forms)))
+        (val (nth 1 forms)))
+    `(,def ,sym ,(hel-form val) nil)))
+
 (defun hel-form:call (fn args)
-  (let ((fn (gethash fn hel-OPENED-SYMBOLS fn)))    
-    (if (macrop fn)
-        (hel-form (macroexpand (cons fn args)))
-      (cons fn (-map #'hel-form args)))))
+  (let ((sym (gethash fn hel-OPENED-SYMBOLS)))
+    (error-unless sym
+      "`%s' is undefined and can not be called" fn)
+    (if (macrop sym)
+        (hel-form (macroexpand (cons sym (-map #'hel-form:quoted args))))
+      (cons sym (-map #'hel-form args)))))
 
 (defun hel-form:quoted (form)
   (if (vectorp form)
@@ -181,8 +263,6 @@ but alias is looked up dynamically.")
     form))
 
 ;; {{ SANDBOX }}
-
-
 
 (defmacro EVAL (form)
   (hel-form form))
@@ -192,12 +272,14 @@ but alias is looked up dynamically.")
 
 (defmacro quote-all (&rest forms) (declare (indent defun)))
 
+;; (EVAL (def/var x (add1 1)))
+
 (quote-all
   (hel-pkg-open! mod-a)
   (hel-pkg-defun! add1 (x) (+ 1 x))
   (hel-pkg-defun! add2 (x) (call add1 (call add1 x)))
   (hel-pkg-defmacro! macros (x) (list 'quote (cons (cdr x) (car x))))
-
+  
   (hel-pkg-defmacro! fncallx (f suffix &rest args)
     (let ((name (intern (format "%s%s" f suffix))))
       `(,name ,@args)))
@@ -217,3 +299,4 @@ but alias is looked up dynamically.")
   (message "%s" (add1 1))
   (hel-pkg-export! add1)
   (hel-pkg-close!))
+
