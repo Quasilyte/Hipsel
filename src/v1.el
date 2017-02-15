@@ -313,7 +313,7 @@ but alias is looked up dynamically.")
     (error-unless sym
       "`%s' is undefined and can not be called" fn)
     (if (macrop sym)
-        (hel-form (macroexpand (cons sym (-map #'hel-form:quoted args))))
+        (hel-form (macroexpand (cons sym args)))
       (cons sym (-map #'hel-form args)))))
 
 (defun hel-form:quoted (form)
