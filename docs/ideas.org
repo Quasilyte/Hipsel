@@ -1,0 +1,17 @@
+| Feature                                  | Value |
+|------------------------------------------+-------|
+| Flat let                                 |    10 |
+| Generic ops (lists vs vectors)           |     8 |
+| Infix with curly braces                  |    10 |
+| Less side effects, sigil for valiables   |     9 |
+| Sigils                                   |     9 |
+| "!" at the end of side-effect functions  |     6 |
+| Modules                                  |    10 |
+| Lisp1                                    |     8 |
+| String interpolation                     |     5 |
+| Convenient regexps                       |     9 |
+| Real consts                              |     7 |
+| Better primitives (head/tail vs car/cdr) |     9 |
+| Lexical def/var for package              |    10 |
+| Check for conflicting symbols on import  |    10 |
+|                                          |       |
