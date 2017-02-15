@@ -319,7 +319,7 @@ but alias is looked up dynamically.")
 (defun hel-form:quoted (form)
   (if (vectorp form)
       (error "no infix forms yet")
-    form))
+    (list 'quote form)))
 
 ;; {{ SANDBOX }}
 
