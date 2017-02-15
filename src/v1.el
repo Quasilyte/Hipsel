@@ -224,15 +224,20 @@ but alias is looked up dynamically.")
     (puthash sym priv-sym hel-OPENED-SYMBOLS)
     `(,def ,priv-sym ,params ,@(-map #'hel-form forms))))
 
+(defun hel--parse-params (params)
+  (cond ((null params) nil)
+        ((listp params) (cons (car params) (hel--parse-params (cdr params))))
+        (t (list '&rest params))))
+
 (defmacro hel-pkg-defun! (sym params &rest forms)
   (hel--pkg-def! sym 
     (lambda (priv-sym)
-      `(defun ,priv-sym ,params ,@(hel-form:do forms)))))
+      `(defun ,priv-sym ,(hel--parse-params params) ,@(hel-form:do forms)))))
 
 (defmacro hel-pkg-defmacro! (sym params &rest forms)
   (hel--pkg-def! sym
     (lambda (priv-sym)
-      `(defmacro ,priv-sym ,params ,@(hel-form:do forms)))))
+      `(defmacro ,priv-sym ,(hel--parse-params params) ,@(hel-form:do forms)))))
 
 (defmacro hel-pkg-defvar! (sym val)
   (hel--pkg-def! sym
