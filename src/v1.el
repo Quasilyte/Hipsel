@@ -66,7 +66,8 @@
   (let (hel-sym   
         elisp-sym
         (alias-table (make-hash-table :test #'eq))
-        (sym-pairs '((array.set! aset)
+        (sym-pairs '((nil? null)
+                     (array.set! aset)
                      (array.nth aref)
                      (array.slice substring)
                      (seq.len length)
@@ -244,6 +245,7 @@ but alias is looked up dynamically.")
 
 (defun hel-form (form)
   (cond
+   ((null form) nil)
    ((listp form) (hel-form:list form))
    (t form)))
 
