@@ -173,6 +173,8 @@ but alias is looked up dynamically.")
                     priv-sym))
 
 (defun hel--pkg-import-all! (src-pkg prefix src-symbols)
+  (error-when (> (length src-symbols) 100)
+    "Package `%s' is too big to be imported entirely")
   (dovector (priv-sym src-symbols)
     (hel--import-priv-sym! prefix priv-sym)))
 
@@ -184,13 +186,27 @@ but alias is looked up dynamically.")
         sym src-pkg)
       (hel--import-pub-sym! prefix sym priv-sym))))
 
+(defun hel--pkg-import-elisp! (prefix import-symbols)
+  ;; Maybe global import of Emacs Lisp symbols
+  ;; will be permitted in future.
+  (error-unless import-symbols
+    "Package `emacs-lisp' is too big to be imported entirely")
+  (dolist (sym import-symbols) 
+    (error-unless (or (fboundp sym)
+                      (boundp sym))
+      "Symbol `%s' is not exported by package `emacs-lisp'"
+      sym)
+    (hel--import-pub-sym! prefix sym sym)))
+
 (defmacro hel-pkg-import! (src-pkg prefix &rest import-symbols)
-  (let ((src-symbols (gethash src-pkg hel-PKG-MAP)))
-    (error-unless src-symbols
-      "Package `%s' not found" src-pkg)
-    (if import-symbols
-        (hel--pkg-import-list! src-pkg prefix src-symbols import-symbols)
-      (hel--pkg-import-all! src-pkg prefix src-symbols))))
+  (if (eq src-pkg 'emacs-lisp)
+      (hel--pkg-import-elisp! prefix import-symbols)
+    (let ((src-symbols (gethash src-pkg hel-PKG-MAP)))
+      (error-unless src-symbols
+        "Package `%s' not found" src-pkg)
+      (if import-symbols
+          (hel--pkg-import-list! src-pkg prefix src-symbols import-symbols)
+        (hel--pkg-import-all! src-pkg prefix src-symbols)))))
 
 (defun hel--pkg-def! (sym def-form)
   (declare (indent defun))
