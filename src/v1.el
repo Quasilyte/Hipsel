@@ -226,11 +226,13 @@ but alias is looked up dynamically.")
 
 (defmacro hel-pkg-defun! (sym params &rest forms)
   (hel--pkg-def! sym 
-    (lambda (priv-sym) `(defun ,priv-sym ,params ,@(-map #'hel-form forms)))))
+    (lambda (priv-sym)
+      `(defun ,priv-sym ,params ,@(hel-form:do forms)))))
 
 (defmacro hel-pkg-defmacro! (sym params &rest forms)
   (hel--pkg-def! sym
-    (lambda (priv-sym) `(defmacro ,priv-sym ,params ,@(-map #'hel-form forms)))))
+    (lambda (priv-sym)
+      `(defmacro ,priv-sym ,params ,@(hel-form:do forms)))))
 
 (defmacro hel-pkg-defvar! (sym val)
   (hel--pkg-def! sym
@@ -244,10 +246,9 @@ but alias is looked up dynamically.")
 ;; - macro expansions
 
 (defun hel-form (form)
-  (cond
-   ((null form) nil)
-   ((listp form) (hel-form:list form))
-   (t form)))
+  (cond ((null form) nil)
+        ((listp form) (hel-form:list form))
+        (t form)))
 
 (defun hel-form:list (list)
   (let* ((head (car list))
