@@ -246,9 +246,23 @@ but alias is looked up dynamically.")
             ((eq 'def/fn head) (hel-form:def/callable 'hel-pkg-defun! tail))
             ((eq 'def/macro head) (hel-form:def/callable 'hel-pkg-defmacro! tail))
             ((eq 'def/dynamic-var head) (hel-form:def/val 'hel-pkg-defvar! tail))
+            ((eq 'do head) (cons 'progn (hel-form:do tail)))
             ((eq 'set! head) (hel-form:set! tail))
             ((symbolp head) (hel-form:call head tail))
             (t (error "Unexpected head of unquoted list"))))))
+
+(defun hel-form:do (forms)
+  (if forms
+      (let ((head (car forms))
+            (tail (cdr forms)))
+        (pcase head
+          (`(let . ,var-pairs)
+           (setq var-pairs
+                 (->> (-map #'hel-form var-pairs)
+                      (-partition 2)))
+           `((let ,var-pairs ,@(hel-form:do tail))))
+          (_ (cons (hel-form head) (hel-form:do tail)))))
+    nil))
 
 (defun hel-form:elisp (forms)
   `(progn ,@forms))
