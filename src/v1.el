@@ -133,6 +133,21 @@ but alias is looked up dynamically.")
   (let ((sym-name (symbol-name priv-sym)))
     (substring sym-name (1+ (string-match ":" sym-name)))))
 
+(defun hel--sym-has-sigil? (sigil sym)
+  (= sigil (aref (symbol-name sym) 0)))
+
+(defun hel--validate-sym (sym)
+  (error-when (hel--sym-has-sigil? ?& sym)
+    "Symbol can not have `&' sigil"))
+
+(defun hel--unary-prefix (sym)  
+  (if (symbolp sym)
+      (let ((name (symbol-name sym)))
+        (if (= ?& (aref name 0))
+            (intern (substring name 1))
+          nil))
+    nil))
+
 ;; {{ PACKAGE-RELATED }}
 
 (defmacro hel-pkg-open! (pkg)
@@ -230,16 +245,19 @@ but alias is looked up dynamically.")
         (t (list '&rest params))))
 
 (defmacro hel-pkg-defun! (sym params &rest forms)
+  (hel--validate-sym sym)
   (hel--pkg-def! sym 
     (lambda (priv-sym)
       `(defun ,priv-sym ,(hel--parse-params params) ,@(hel-form:do forms)))))
 
 (defmacro hel-pkg-defmacro! (sym params &rest forms)
+  (hel--validate-sym sym)
   (hel--pkg-def! sym
     (lambda (priv-sym)
       `(defmacro ,priv-sym ,(hel--parse-params params) ,@(hel-form:do forms)))))
 
 (defmacro hel-pkg-defvar! (sym val)
+  (hel--validate-sym sym)
   (hel--pkg-def! sym
     (lambda (priv-sym) `(defvar ,priv-sym ,val))))
 
@@ -285,9 +303,14 @@ but alias is looked up dynamically.")
                  (->> (-map #'hel-form var-pairs)
                       (-partition 2)))
            `((let ,var-pairs ,@(hel-form:do tail))))
-          (_ (cons (hel-form head) (hel-form:do tail)))))
+          (_
+           (let ((unary (hel--unary-prefix head)))
+             (if unary
+                 (cons (list unary (hel-form (car tail)))
+                       (hel-form:do (cdr tail)))
+               (cons (hel-form head) (hel-form:do tail)))))))
     nil))
-
+      
 (defun hel-form:elisp (forms)
   `(progn ,@forms))
 
@@ -336,8 +359,6 @@ but alias is looked up dynamically.")
   (cons (gethash f hel-OPENED-SYMBOLS f) args))
 
 (defmacro quote-all (&rest forms) (declare (indent defun)))
-
-;; (EVAL (def/var x (add1 1)))
 
 (quote-all
   (hel-pkg-open! mod-a)
