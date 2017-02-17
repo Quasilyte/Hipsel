@@ -248,13 +248,15 @@ but alias is looked up dynamically.")
   (hel--validate-sym sym)
   (hel--pkg-def! sym 
     (lambda (priv-sym)
-      `(defun ,priv-sym ,(hel--parse-params params) ,@(hel-form:do forms)))))
+      `(defun ,priv-sym ,(hel--parse-params params)
+         ,@(hel-form:do forms)))))
 
 (defmacro hel-pkg-defmacro! (sym params &rest forms)
   (hel--validate-sym sym)
   (hel--pkg-def! sym
     (lambda (priv-sym)
-      `(defmacro ,priv-sym ,(hel--parse-params params) ,@(hel-form:do forms)))))
+      `(defmacro ,priv-sym ,(hel--parse-params params)
+         ,@(hel-form:do forms)))))
 
 (defmacro hel-pkg-defvar! (sym val)
   (hel--validate-sym sym)
@@ -330,7 +332,7 @@ but alias is looked up dynamically.")
          (sym (car signature))
          (params (cdr signature))
          (forms (cdr forms)))
-    `(,def ,sym ,params ,@forms)))
+    `(,def ,sym ,params ,@(-map #'hel-form forms))))
 
 (defun hel-form:def/val (def forms)
   (let ((sym (nth 0 forms))
@@ -342,7 +344,7 @@ but alias is looked up dynamically.")
     (error-unless sym
       "`%s' is undefined and can not be called" fn)
     (if (macrop sym)
-        (hel-form (macroexpand (cons sym args)))
+        (macroexpand (cons sym args))
       (cons sym (-map #'hel-form args)))))
 
 (defun hel-form:quoted (form)
