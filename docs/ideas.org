@@ -14,4 +14,5 @@
 | Better primitives (head/tail vs car/cdr) |     9 |
 | Lexical def/var for package              |    10 |
 | Check for conflicting symbols on import  |    10 |
+| Import with renaming                     |     3 |
 |                                          |       |
