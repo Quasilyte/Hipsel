@@ -1,18 +1,19 @@
-| Feature                                  | Value |
-|------------------------------------------+-------|
-| Flat let                                 |    10 |
-| Generic ops (lists vs vectors)           |     8 |
-| Infix with curly braces                  |    10 |
-| Less side effects, sigil for valiables   |     9 |
-| Sigils                                   |     9 |
-| "!" at the end of side-effect functions  |     6 |
-| Modules                                  |    10 |
-| Lisp1                                    |     8 |
-| String interpolation                     |     5 |
-| Convenient regexps                       |     9 |
-| Real consts                              |     7 |
-| Better primitives (head/tail vs car/cdr) |     9 |
-| Lexical def/var for package              |    10 |
-| Check for conflicting symbols on import  |    10 |
-| Import with renaming                     |     3 |
-|                                          |       |
+| Feature                                              | Value | Status |
+|------------------------------------------------------+-------+--------|
+| Flat let                                             |    10 | 80%    |
+| Modules                                              |    10 | 70%    |
+| Infix with curly braces                              |    10 | 0%     |
+| Check for conflicting symbols on import              |    10 | 0%     |
+| Lexical def/var for package                          |    10 | 0%     |
+| Less side effects, sigil for valiables               |     9 | 0%     |
+| Sigils                                               |     9 | 0%     |
+| Convenient regexps                                   |     9 | 0%     |
+| Better primitives (head/tail vs car/cdr)             |     9 | 25%    |
+| Function-local defun or other way to group functions |     9 | 0%     |
+| Generic ops (lists vs vectors)                       |     8 | 0%     |
+| Lisp1                                                |     8 | 0%     |
+| Real consts                                          |     7 | 0%     |
+| "!" at the end of side-effect functions              |     6 | 0%     |
+| String interpolation                                 |     5 | 0%     |
+| Import with renaming                                 |     3 | 0%     |
+|                                                      |       |        |
