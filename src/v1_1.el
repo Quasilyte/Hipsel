@@ -108,19 +108,17 @@ but alias is looked up dynamically.")
             ,@bindings)
        ,@forms)))
 
+(defun hel-def/fn-body (locals forms)
+  (if locals
+      `((let* ,(-partition 2 locals)
+         ,@forms))
+    forms))
+
 (defun hel-def/fn (forms sym params locals)
-  (if locals  
-      `(defun ,sym ,params
-         (let* ,(-partition 2 locals)
-           ,@forms))
-    `(defun ,sym ,params ,@forms)))
+  `(defun ,sym ,params ,@(hel-def/fn-body locals forms)))
 
 (defun hel-def/macro (forms sym params locals)
-  (if locals
-      `(defmacro ,sym ,params
-         (let* ,(-partition 2 locals)
-           ,@forms))
-    `(defmacro ,sym ,params ,@forms)))
+  `(defmacro ,sym ,params ,@(hel-def/fn-body locals forms)))
 
 (defun hel-parse-signature (signature)
   (let (locals)
@@ -299,6 +297,10 @@ but alias is looked up dynamically.")
                    (= 1 (length locals)))
     "Local binding `%s' misses initialier" var))
 
+(def/fn (check-can-bind-fn)
+  (error-unless hel-OPENED-PKG
+    "No package is opened, can not define symbols"))
+
 (def/fn (blame-invalid-list-head)
   (error "Invalid unquoted list head"))
 
@@ -343,7 +345,7 @@ but alias is looked up dynamically.")
          sym (gethash fn hel-OPENED-SYMBOLS))
   (check-can-call fn sym)
   ;; Do we need eager macro expansion here?
-  (cons sym (hel-form args)))
+  (cons sym (-map #'hel-form args)))
 
 (def/fn ((hel-form/list form)
          head (car form)
@@ -355,6 +357,7 @@ but alias is looked up dynamically.")
    ((symbolp head)
     (pcase head
       ;; Special forms
+      (`quote `(quote ,(car tail)))
       (`package `(hel-pkg-open! ',(car tail)))
       (`export `(hel-pkg-export! ',tail))
       (`elisp `(progn ,@tail))
@@ -363,7 +366,8 @@ but alias is looked up dynamically.")
       (_ (hel-form/list/call head tail))))
    ;; #NOTE: if we want lisp1, expressions
    ;; must be allowed in head possition
-   (t (blame-invalid-list-head))))
+   (t
+    (blame-invalid-list-head))))
 
 ;; {{ PACKAGE-RELATED }}
 
@@ -450,13 +454,18 @@ but alias is looked up dynamically.")
                     (hel-parse-locals (-drop 2 locals)))))
     nil))
 
+(def/macro ((hel-defun! sym params &rest forms)
+            priv-sym (hel--intern hel-OPENED-PKG sym))
+  (check-can-bind-fn)
+  (puthash sym priv-sym hel-OPENED-SYMBOLS)
+  `(defun ,priv-sym ,params ,@forms))
+(set-indent hel-defun! defun)
+
 (def/fn ((hel-pkg-def/fn params)
          signature (car params)
          forms (cdr params))
   (let/list (sym params locals)
       (hel-parse-signature signature)
-    (hel-def/fn (-map #'hel-form forms)
-                (hel--intern hel-OPENED-PKG sym)
-                (hel-parse-params params)
-                (hel-parse-locals locals))))
-
+    `(hel-defun! ,sym ,(hel-parse-params params)
+       ,@(hel-def/fn-body (hel-parse-locals locals)
+                          (-map #'hel-form forms)))))
