@@ -1,19 +1,20 @@
 | Feature                                              | Value | Status |
 |------------------------------------------------------+-------+--------|
-| Flat let                                             |    10 | 80%    |
-| Modules                                              |    10 | 70%    |
-| Infix with curly braces                              |    10 | 0%     |
-| Check for conflicting symbols on import              |    10 | 0%     |
-| Lexical def/var for package                          |    10 | 0%     |
-| Less side effects, sigil for valiables               |     9 | 0%     |
-| Sigils                                               |     9 | 0%     |
-| Convenient regexps                                   |     9 | 0%     |
-| Better primitives (head/tail vs car/cdr)             |     9 | 25%    |
-| Function-local defun or other way to group functions |     9 | 0%     |
-| Generic ops (lists vs vectors)                       |     8 | 0%     |
-| Lisp1                                                |     8 | 0%     |
-| Real consts                                          |     7 | 0%     |
-| "!" at the end of side-effect functions              |     6 | 0%     |
-| String interpolation                                 |     5 | 0%     |
-| Import with renaming                                 |     3 | 0%     |
+| Flat let                                             |    10 |    80% |
+| Modules                                              |    10 |    70% |
+| Infix with curly braces                              |    10 |     0% |
+| Check for conflicting symbols on import              |    10 |     0% |
+| Lexical def/var for package                          |    10 |     0% |
+| Less side effects, sigil for valiables               |     9 |     0% |
+| Sigils                                               |     9 |     0% |
+| Convenient regexps                                   |     9 |     0% |
+| Better primitives (head/tail vs car/cdr)             |     9 |    25% |
+| Function-local defun or other way to group functions |     9 |     0% |
+| Generic ops (lists vs vectors)                       |     8 |     0% |
+| Keyword (optional) args                              |     8 |     0% |
+| Lisp1                                                |     8 |     0% |
+| Real consts                                          |     7 |     0% |
+| "!" at the end of side-effect functions              |     6 |     0% |
+| String interpolation                                 |     5 |     0% |
+| Import with renaming                                 |     3 |     0% |
 |                                                      |       |        |
